@@ -14,6 +14,7 @@ A browser survival game. Requires a mouse and keyboard.
 - G: throw a grenade once unlocked
 - E: use the machine gun when available
 - Q: use Upheaval when charged
+- F: toggle fullscreen (or the button in the top-right corner of the menus)
 
 ## Hosting
 
