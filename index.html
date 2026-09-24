@@ -1188,7 +1188,11 @@ let unlocked = [true, false, false, false], ammo = WEAPONS.map(w => w.mag);
 let startBest = 0, recShown = false;
 let spawnT = 0, trauma = 0, bestRec = 0, gCool = 0, gRecharge = 6, lastKillSnd = 0;
 let nades = [], booms = [], pending = [];
-try { bestRec = +localStorage.getItem('flatline_best') || 0; } catch (e) { }
+try {
+  // one-time wipe of personal bests saved before the September 2026 rebalance; runs once per browser
+  if (localStorage.getItem('flatline_best_reset') !== '2026-09') { localStorage.removeItem('flatline_best'); localStorage.setItem('flatline_best_reset', '2026-09'); }
+  bestRec = +localStorage.getItem('flatline_best') || 0;
+} catch (e) { }
 const keys = {};
 const G = { kz: new Spring(760, 32), kr: new Spring(600, 26), ky: new Spring(420, 20), sw: new Spring(160, 16), rl: new Spring(160, 18), swayX: new Spring(120, 12), swayY: new Spring(120, 12) };
 const CAM = { kp: new Spring(560, 27), ky: new Spring(560, 27), fov: new Spring(520, 30), jx: new Spring(1150, 30), jy: new Spring(1150, 30), cb: new Spring(800, 32) };
@@ -1293,7 +1297,13 @@ document.addEventListener('wheel', e => {
 window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; mouseDown = false; if (state === 'play') pauseGame(); });
 
 $('menu').addEventListener('click', () => { initAudio(); resetGame(); startPlay(); });
+// a press that starts in the name form (say, drag-selecting the name) and is released outside it still fires
+// a click on the overlay; only presses that begin on the overlay itself count as "play again"
+let overPressOk = false;
+$('over').addEventListener('pointerdown', e => { overPressOk = !e.target.closest('#lbForm'); });
 $('over').addEventListener('click', () => {
+  if (!overPressOk) return;
+  overPressOk = false;
   if (placing) return; // let the leaderboard placement play out
   if (overAnim && !overAnim.done) { landOver(); return; } // a click during the count skips to the result
   if (performance.now() - (overAnim && overAnim.landAt || overAt) < 350) return;
