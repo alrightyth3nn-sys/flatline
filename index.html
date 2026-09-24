@@ -236,7 +236,7 @@ kbd{font-family:inherit;display:inline-block;border:2px solid var(--ink);padding
   <div id="prompt"><kbd>E</kbd>Man the machine gun</div>
   <div id="objective"><b id="objTxt">Land 6 headshots</b><span id="objCnt">0 / 6</span></div>
   <div id="uphTitle">Upheaval</div>
-  <div id="mgHud"><span>Machine gun</span> <b id="mgTime">30s</b><div id="mgBar"><div id="mgFill"></div></div><small><kbd>E</kbd> to leave early</small></div>
+  <div id="mgHud"><span>Machine gun</span> <b id="mgTime">22s</b><div id="mgBar"><div id="mgFill"></div></div><small><kbd>E</kbd> to leave early</small></div>
 </div>
 
 <div id="menu" class="overlay">
@@ -2331,7 +2331,7 @@ function abilityView() {
 }
 
 /* ====================== MACHINE GUN + BARRIERS ====================== */
-const TUR_TIME = 30;
+const TUR_TIME = 22; // seconds per machine gun use
 const MGW = { id: 4, name: 'Machine gun', dmg: { head: 1e6, torso: 135, arm: 100, leg: 110 }, impulse: 8.5, pierce: 3, stop: .008 };
 const MGW_SLOW = Object.assign({}, MGW, { dmg: { head: 1e6, torso: 420, arm: 320, leg: 340 }, impulse: 11 }); // opening slow-mo: shreds
 function closeHit(d, reach) {
@@ -2578,7 +2578,7 @@ function setGateOpen(pn, open) {
 function tickGates(dt) {
   if (RING.state !== 'up' || !RING.gates.length) return;
   const prog = clamp(1 - TUR.time / TUR_TIME, 0, 1);
-  const D = 7.5 - 4.5 * prog, W = 2.4 - 1.4 * prog;
+  const D = 6.4 - 3.8 * prog, W = 2.4 - 1.4 * prog; // each gate stays open 6.4 s, narrowing to 2.6 s
   const pick = ex => { const o = RING.gates.filter(g => g !== ex); return o[Math.random() * o.length | 0]; };
   let S = RING.sched;
   if (!S) { const g0 = RING.gates[Math.random() * RING.gates.length | 0]; S = RING.sched = { cur: null, next: g0, warned: false, t: 1.4, beep: 0 }; }
