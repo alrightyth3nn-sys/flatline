@@ -138,11 +138,18 @@ kbd{font-family:inherit;display:inline-block;border:2px solid var(--ink);padding
 .overline{font-size:26px;font-weight:600;color:var(--soft)}
 .rec{color:var(--blood);font-weight:800}
 .recBanner{display:none;font-size:clamp(30px,5vw,46px);font-weight:800;color:#fff;background:var(--blood);padding:4px 18px;margin:0 auto 10px;width:max-content;transform:rotate(-2deg)}
-#over.record .recBanner{display:block;animation:recIn .6s cubic-bezier(.2,1.4,.3,1) both .15s}
-@keyframes recIn{0%{opacity:0;transform:rotate(-2deg) scale(2.2)}100%{opacity:1;transform:rotate(-2deg) scale(1)}}
-#over.record .big{color:var(--blood)}
-.big.slam{animation:bigSlam .5s cubic-bezier(.2,1.5,.3,1)}
-@keyframes bigSlam{0%{transform:scale(1.35)}100%{transform:scale(1)}}
+/* game over: the stamp keeps its space from the start (no layout jump), then slams in when the count lands */
+#over.record .recBanner,#over.top .recBanner{display:block;visibility:hidden}
+#over.landed.record .recBanner,#over.landed.top .recBanner{visibility:visible;animation:recIn .45s cubic-bezier(.18,1.5,.35,1) both}
+@keyframes recIn{0%{opacity:0;transform:rotate(-2deg) scale(2.4)}55%{opacity:1}100%{opacity:1;transform:rotate(-2deg) scale(1)}}
+#over.top .recBanner{background:#e0a526;color:#1f2733}
+#over.top .recBanner .crown{width:.9em;height:.7em;color:#1f2733;margin-right:.25em;vertical-align:-.02em}
+#over.record .big,#over.top .big{color:var(--blood)}
+.big{will-change:transform}
+.overPanel{max-width:560px}
+.overPanel .cta{margin-top:26px}
+#over .overBoard{position:absolute;right:max(32px,4vw);top:50%;transform:translateY(-50%);width:270px}
+@media (max-width:1200px){#over{flex-direction:column;justify-content:flex-start;overflow:auto;padding:24px 0}#over .overBoard{position:static;transform:none;margin:8px auto 32px}}
 #kills.rec{color:var(--blood)}
 #confetti{position:absolute;inset:0;overflow:hidden;pointer-events:none}
 #confetti i{position:absolute;top:-20px;width:9px;height:14px;animation:conf linear forwards}
@@ -167,9 +174,10 @@ kbd{font-family:inherit;display:inline-block;border:2px solid var(--ink);padding
 .rows li.you,.rows li.you .rk{color:var(--blood)}
 .rows li.empty{display:block;color:var(--soft);font-weight:500;border:0}
 .crown{width:18px;height:14px;color:#e0a526;margin-right:6px;vertical-align:-1px}
-.lbForm{margin-bottom:24px}
-.lbForm.in{animation:lbIn .3s ease-out}
-@keyframes lbIn{from{opacity:0;transform:translateY(8px)}}
+.lbForm{width:min(360px,100%);margin:22px auto 0;cursor:default}
+.lbForm.wait{visibility:hidden}
+.lbForm.in{animation:lbIn .38s cubic-bezier(.2,1.25,.35,1) both}
+@keyframes lbIn{from{opacity:0;transform:translateY(14px) scale(.96)}}
 .lbForm label{display:block;font-size:18px;font-weight:600;margin-bottom:8px}
 .lbRow{display:flex;gap:8px}
 .lbRow[hidden]{display:none}
@@ -177,7 +185,7 @@ kbd{font-family:inherit;display:inline-block;border:2px solid var(--ink);padding
 .lbRow input:focus{border-color:#e0a526}
 .lbRow button{font:inherit;font-size:18px;font-weight:800;padding:5px 16px;border:2px solid var(--ink);border-radius:2px;background:var(--ink);color:var(--bg);cursor:pointer}
 .lbRow button:disabled{opacity:.5;cursor:default}
-.lbMsg{font-size:15px;font-weight:500;color:var(--soft);margin-top:8px;min-height:18px}
+.lbMsg{font-size:15px;font-weight:500;color:var(--soft);margin-top:8px;min-height:18px;text-align:center}
 .lbMsg b{color:var(--ink);font-weight:800;font-size:19px}
 @media (max-width:900px){.overlay{overflow:auto;align-items:flex-start}.panel.split{flex-direction:column;gap:28px}.board{flex:none;width:min(320px,100%)}}
 @media (prefers-reduced-motion: reduce){#toast.go{animation-duration:.01s}}
@@ -237,24 +245,20 @@ kbd{font-family:inherit;display:inline-block;border:2px solid var(--ink);padding
 </div>
 
 <div id="over" class="overlay hidden"><div id="confetti"></div>
-  <div class="panel split">
-   <div class="main">
+  <div class="panel overPanel" id="overPanel">
     <div class="overline">Overwhelmed after <span id="oTime">0:00</span></div>
-    <div class="recBanner" id="oRec">New record</div>
+    <div class="recBanner" id="oRec">New personal best</div>
     <div class="big" id="oKills">0</div>
     <div class="overline" id="oLabel">zombies eliminated</div>
     <div class="best" id="oBest"></div>
-    <div style="margin-top:30px" class="cta">Click to try again</div>
-   </div>
-    <aside class="board" aria-label="Leaderboard">
-      <form class="lbForm" id="lbForm" autocomplete="off" hidden>
-        <label for="lbName" id="lbLabel">Add your score to the leaderboard</label>
-        <div class="lbRow" id="lbRow"><input id="lbName" maxlength="16" placeholder="Your name" spellcheck="false"><button type="submit" id="lbBtn">Submit</button></div>
-        <div class="lbMsg" id="lbMsg"></div>
-      </form>
-      <div class="boardHead">Leaderboard</div><ol class="rows" id="overBoard"></ol>
-    </aside>
+    <form class="lbForm" id="lbForm" autocomplete="off" hidden>
+      <label for="lbName" id="lbLabel">Add your score to the leaderboard</label>
+      <div class="lbRow" id="lbRow"><input id="lbName" maxlength="16" placeholder="Your name" spellcheck="false"><button type="submit" id="lbBtn">Submit</button></div>
+      <div class="lbMsg" id="lbMsg"></div>
+    </form>
+    <div class="cta" id="oCta">Click to try again</div>
   </div>
+  <aside class="board overBoard" aria-label="Leaderboard"><div class="boardHead">Leaderboard</div><ol class="rows" id="overBoard"></ol></aside>
 </div>
 <button id="fsBtn" type="button" title="Fullscreen (F)" aria-label="Toggle fullscreen">
   <svg class="fsIn" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
@@ -412,6 +416,21 @@ const SFX = {
     tn({ f0: 38, f1: 90, dur: GEST, g: 1.1, a: GEST * .8, dest: dry });
     nz({ f: 140, f1: 900, dur: GEST, g: .7, a: GEST * .85, dest: dry });
     tn({ type: 'triangle', f0: 180, f1: 1100, dur: GEST, g: .09, a: GEST * .9, dest: dry });
+  },
+  // game-over tally: ticks climb in pitch with the count, the landing hit and chord grow with the tier
+  // (0 normal, 1 personal best, 2 would be #1 overall), and a soft two-note chime brings in the name prompt
+  tally(k) { const f = 520 + 900 * k; tn({ type: 'triangle', f0: f, f1: f * 1.02, dur: .045, g: .045 + .035 * k, dest: dry }); },
+  land(tier) {
+    tn({ f0: 150, f1: 40, dur: .34, g: .95 + .15 * tier, dest: dry });
+    nz({ type: 'highpass', f: 3200, dur: .05, g: .28, dest: dry });
+    nz({ f: 1400, f1: 120, dur: .22, g: .3, dest: dry });
+    const chord = tier === 2 ? [784, 988, 1175, 1568] : tier === 1 ? [659, 831, 988] : [784, 1175];
+    chord.forEach((f, i) => tn({ t: .015 + i * .04, type: 'triangle', f0: f, f1: f * 1.003, dur: .55, g: .085, dest: dry }));
+    if (tier === 2) { tn({ t: .2, type: 'sine', f0: 2349, f1: 2353, dur: .9, g: .05, dest: dry }); nz({ t: .18, type: 'highpass', f: 7000, dur: .6, g: .06, a: .05, dest: dry }); }
+  },
+  prompt(tier) {
+    tn({ type: 'sine', f0: 880, f1: 1320, dur: .12, g: .065, dest: dry });
+    tn({ t: .085, type: 'sine', f0: tier ? 1760 : 1320, f1: tier ? 1764 : 1323, dur: .3, g: .05, dest: dry });
   },
   fanfare() {
     [523, 659, 784, 1047].forEach((f, i) => tn({ t: i * .09, type: 'triangle', f0: f, f1: f * 1.004, dur: .5 - i * .05, g: .22, dest: dry }));
@@ -1248,7 +1267,11 @@ document.addEventListener('wheel', e => {
 window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; mouseDown = false; if (state === 'play') pauseGame(); });
 
 $('menu').addEventListener('click', () => { initAudio(); resetGame(); startPlay(); });
-$('over').addEventListener('click', () => { if (performance.now() - overAt < 700) return; initAudio(); resetGame(); startPlay(); });
+$('over').addEventListener('click', () => {
+  if (overAnim && !overAnim.done) { landOver(); return; } // a click during the count skips to the result
+  if (performance.now() - (overAnim && overAnim.landAt || overAt) < 350) return;
+  initAudio(); resetGame(); startPlay();
+});
 $('pause').addEventListener('click', () => { initAudio(); startPlay(); });
 function startPlay() {
   state = 'play'; lastMX = null; skipMoves = 2;
@@ -1569,28 +1592,59 @@ function die() {
   $('oLabel').textContent = kills === 1 ? 'zombie eliminated' : 'zombies eliminated';
   $('oTime').textContent = fmtTime(gameT);
   $('oBest').innerHTML = newRec && kills > 0 ? (startBest > 0 ? `Previous best: ${startBest}` : 'First record set') : `Record: ${bestRec}`;
-  $('oRec').textContent = startBest > 0 ? `New record  +${kills - startBest}` : 'New record';
   $('menuBest').textContent = `Best: ${bestRec} eliminated`;
   lastRun = { score: kills, secs: Math.max(1, Math.floor(gameT)), sent: false };
 }
-let overRec = false;
+let overRec = false, overAnim = null;
+// would this run top the global board? (against the board as last loaded; rechecked when the count lands)
+function beatsTop() {
+  if (!lastRun || lastRun.score < 1 || !lbTop) return false;
+  const t = lbTop[0]; return !t || lastRun.score > t.score || (lastRun.score === t.score && lastRun.secs < t.secs);
+}
+function setStamp(top) {
+  const r = $('oRec'); r.textContent = '';
+  if (top) r.append(crown(), 'New #1 high score');
+  else r.append(startBest > 0 ? `New personal best +${kills - startBest}` : 'New personal best');
+}
 function showOver() {
   state = 'over'; overAt = performance.now();
-  $('hud').classList.remove('on'); $('over').classList.remove('hidden');
-  $('kills').classList.remove('rec');
-  const ov = $('over'); ov.classList.toggle('record', overRec);
-  if (overRec) SFX.fanfare(); // the record fanfare leads, then the count-up and stamp play out
+  $('hud').classList.remove('on'); $('kills').classList.remove('rec');
+  const ov = $('over'), top = beatsTop();
+  ov.classList.remove('hidden', 'landed'); ov.classList.toggle('record', overRec); ov.classList.toggle('top', top);
+  setStamp(top); $('confetti').textContent = '';
+  if (overRec || top) SFX.fanfare(); // the fanfare leads, then the count-up and stamp play out
   resetLbForm(); loadBoard();
-  // count the kills up, then offer the leaderboard
-  const el = $('oKills'), target = kills, t0 = performance.now(), dur = overRec ? 1400 : 700;
+  $('overPanel').animate([{ opacity: 0, transform: 'translateY(12px)' }, { opacity: 1, transform: 'none' }], { duration: 260, easing: 'cubic-bezier(.2,.9,.3,1)' });
+  // count up fast, then ease into the final number while the ticks climb in pitch and the number swells
+  const el = $('oKills'), target = kills, dur = RM.matches || !target ? 0 : Math.min(2100, 650 + Math.sqrt(target) * 65);
+  const A = overAnim = { t0: performance.now(), dur, shown: -1, lastTick: 0, done: false };
+  el.textContent = '0'; el.style.transform = '';
   const tick = () => {
-    const k = Math.min(1, (performance.now() - t0) / dur), e = 1 - Math.pow(1 - k, 3); el.textContent = Math.round(target * e);
-    if (k < 1) { requestAnimationFrame(tick); return; }
-    if (overRec) { el.classList.remove('slam'); void el.offsetWidth; el.classList.add('slam'); burstConfetti(); }
-    setTimeout(showLbForm, overRec ? 450 : 150);
+    if (A !== overAnim || A.done) return;
+    const now = performance.now(), k = A.dur ? Math.min(1, (now - A.t0) / A.dur) : 1, e = 1 - Math.pow(1 - k, 3.4);
+    const v = Math.round(target * e);
+    if (v !== A.shown) { A.shown = v; el.textContent = v; if (k < 1 && now - A.lastTick > 42) { A.lastTick = now; SFX.tally(e); } }
+    el.style.transform = `scale(${1 + .07 * e})`;
+    if (k < 1) requestAnimationFrame(tick); else landOver();
   };
   tick();
   wantLock = false; if (document.exitPointerLock) document.exitPointerLock();
+}
+// the number lands: overshoot pop, hit sound, stamp and confetti by tier, then the name prompt
+function landOver() {
+  const A = overAnim; if (!A || A.done) return;
+  A.done = true; A.landAt = performance.now();
+  const el = $('oKills'), ov = $('over'), top = beatsTop(), tier = top ? 2 : overRec ? 1 : 0;
+  el.textContent = kills; el.style.transform = '';
+  ov.classList.toggle('top', top); setStamp(top); ov.classList.add('landed');
+  el.animate([{ transform: 'scale(1.07)' }, { transform: `scale(${1.2 + .05 * tier})`, offset: .28 }, { transform: 'scale(.97)', offset: .62 }, { transform: 'scale(1)' }],
+    { duration: RM.matches ? 10 : 460, easing: 'cubic-bezier(.2,.9,.3,1)' });
+  SFX.land(tier);
+  if (tier && !RM.matches) {
+    burstConfetti(tier === 2 ? 110 : 60, tier === 2);
+    if (tier === 2) setTimeout(() => { if (state === 'over') burstConfetti(70, true, true); }, 380);
+  }
+  setTimeout(() => showLbForm(tier), 360);
 }
 const fmtTime = t => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
 
@@ -1636,14 +1690,15 @@ function lbMsg(text, strong, withCrown) {
   m.append(text);
 }
 function resetLbForm() {
-  const f = $('lbForm'); f.hidden = true; f.classList.remove('in'); lbYou = null;
+  const f = $('lbForm'); f.hidden = !(lastRun && lastRun.score > 0); f.classList.add('wait'); f.classList.remove('in'); lbYou = null;
   $('lbRow').hidden = $('lbLabel').hidden = false; $('lbBtn').disabled = false;
   try { $('lbName').value = localStorage.getItem('flatline_name') || ''; } catch (e) { }
   lbMsg('Optional. Click anywhere else to play again.');
 }
-function showLbForm() {
+function showLbForm(tier = 0) {
   if (state !== 'over' || !lastRun || lastRun.score < 1) return;
-  const f = $('lbForm'); f.hidden = false; f.classList.add('in');
+  const f = $('lbForm'); f.hidden = false; f.classList.remove('wait'); f.classList.add('in');
+  SFX.prompt(tier);
   $('lbName').focus({ preventScroll: true });
 }
 $('lbForm').addEventListener('click', e => e.stopPropagation()); // typing a name mustn't restart the game
@@ -1659,7 +1714,7 @@ $('lbForm').addEventListener('submit', async e => {
     if (!r.ok) throw new Error(d.error || "The leaderboard didn't accept that. Try again.");
     lastRun.sent = true; try { localStorage.setItem('flatline_name', name); } catch (e) { }
     lbTop = d.top; lbFailed = false; lbYou = { name, score: lastRun.score }; renderBoards();
-    $('lbRow').hidden = $('lbLabel').hidden = true;
+    $('lbRow').hidden = $('lbLabel').hidden = true; SFX.chime();
     lbMsg('Click anywhere to play again.', d.rank === 1 ? "You're #1" : `You placed #${d.rank}`, d.rank === 1);
   } catch (err) {
     $('lbBtn').disabled = false;
@@ -1810,10 +1865,10 @@ function updateObjective(pop) {
   $('objCnt').textContent = ABL.phase === 'montage' ? `${ABL.mk} down` : `${Math.min(ABL.got, ABL.need)} / ${ABL.need}`;
   if (pop) replay($('objCnt'), KPOP, 200);
 }
-function burstConfetti() {
-  const box = $('confetti'); box.innerHTML = '';
-  const cols = ['#a8281f', '#e0a526', '#ffffff', '#26324a', '#8d9a78'];
-  for (let i = 0; i < 70; i++) {
+function burstConfetti(n = 70, gold = false, keep = false) {
+  const box = $('confetti'); if (!keep) box.innerHTML = '';
+  const cols = gold ? ['#e0a526', '#f3c95a', '#ffffff', '#e0a526', '#a8281f'] : ['#a8281f', '#e0a526', '#ffffff', '#26324a', '#8d9a78'];
+  for (let i = 0; i < n; i++) {
     const c = document.createElement('i');
     c.style.left = Math.random() * 100 + '%'; c.style.background = cols[i % cols.length];
     c.style.animationDuration = (1.6 + Math.random() * 1.8) + 's'; c.style.animationDelay = Math.random() * .5 + 's';
