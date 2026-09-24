@@ -132,7 +132,11 @@ kbd{font-family:inherit;display:inline-block;border:2px solid var(--ink);padding
 .keys dt{font-weight:800}
 .keys dd{margin:0;color:var(--soft);font-weight:500}
 .cta{font-size:24px;font-weight:800;display:inline-block;padding:10px 26px;border:2px solid var(--ink);border-radius:2px}
-.overlay:hover .cta{background:var(--ink);color:var(--bg)}
+.overlay:hover .cta:not(.again){background:var(--ink);color:var(--bg)}
+#over{cursor:default}
+.cta.again{font-family:inherit;background:transparent;color:var(--ink);cursor:pointer}
+.cta.again:hover,.cta.again:focus-visible{background:var(--ink);color:var(--bg);outline:none}
+.againWrap{text-align:center;margin-top:6px}
 .best{margin-top:18px;font-size:17px;color:var(--soft);font-weight:500}
 .big{font-size:clamp(120px,26vw,240px);font-weight:800;line-height:.8;margin:6px 0 4px}
 .overline{font-size:26px;font-weight:600;color:var(--soft)}
@@ -271,9 +275,9 @@ kbd{font-family:inherit;display:inline-block;border:2px solid var(--ink);padding
       <div class="lbRow" id="lbRow"><input id="lbName" maxlength="16" placeholder="Your name" spellcheck="false"><button type="submit" id="lbBtn">Submit</button></div>
       <div class="lbMsg" id="lbMsg"></div>
     </form>
-    <div class="cta" id="oCta">Click to try again</div>
+    <button type="button" class="cta again" id="oAgain">Play again</button>
   </div>
-  <aside class="board overBoard" aria-label="Leaderboard"><div class="boardHead">Leaderboard</div><ol class="rows" id="overBoard"></ol><div class="boardMsg" id="boardMsg"></div></aside>
+  <aside class="board overBoard" aria-label="Leaderboard"><div class="boardHead">Leaderboard</div><ol class="rows" id="overBoard"></ol><div class="boardMsg" id="boardMsg"></div><div class="againWrap"><button type="button" class="cta again" id="boardAgain" hidden>Play again</button></div></aside>
 </div>
 <button id="fsBtn" type="button" title="Fullscreen (F)" aria-label="Toggle fullscreen">
   <svg class="fsIn" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
@@ -1297,16 +1301,12 @@ document.addEventListener('wheel', e => {
 window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; mouseDown = false; if (state === 'play') pauseGame(); });
 
 $('menu').addEventListener('click', () => { initAudio(); resetGame(); startPlay(); });
-// a press that starts in the name form (say, drag-selecting the name) and is released outside it still fires
-// a click on the overlay; only presses that begin on the overlay itself count as "play again"
-let overPressOk = false;
-$('over').addEventListener('pointerdown', e => { overPressOk = !e.target.closest('#lbForm'); });
-$('over').addEventListener('click', () => {
-  if (!overPressOk) return;
-  overPressOk = false;
-  if (placing) return; // let the leaderboard placement play out
-  if (overAnim && !overAnim.done) { landOver(); return; } // a click during the count skips to the result
-  if (performance.now() - (overAnim && overAnim.landAt || overAt) < 350) return;
+// the game-over screen only restarts through its Play again buttons, so a stray click can't throw away a score
+// that hasn't been submitted yet; clicking during the count-up just skips to the result
+$('over').addEventListener('click', () => { if (overAnim && !overAnim.done) landOver(); });
+for (const id of ['oAgain', 'boardAgain']) $(id).addEventListener('click', e => {
+  e.stopPropagation();
+  if (state !== 'over' || placing || (overAnim && !overAnim.done)) return;
   initAudio(); resetGame(); startPlay();
 });
 $('pause').addEventListener('click', () => { initAudio(); startPlay(); });
@@ -1649,7 +1649,7 @@ function showOver() {
   const ov = $('over'), top = beatsTop();
   ov.classList.remove('hidden', 'landed', 'boardView'); ov.classList.toggle('record', overRec);
   for (const a of $('overPanel').getAnimations()) a.cancel();
-  $('boardMsg').textContent = ''; $('lbName').style.color = ''; placing = false; ov.classList.toggle('top', top);
+  $('boardMsg').textContent = ''; $('boardAgain').hidden = true; $('lbName').style.color = ''; placing = false; ov.classList.toggle('top', top);
   setStamp(top); $('confetti').textContent = '';
   if (overRec || top) SFX.fanfare(); // the fanfare leads, then the count-up and stamp play out
   resetLbForm(); loadBoard();
@@ -1733,7 +1733,7 @@ function resetLbForm() {
   const f = $('lbForm'); f.hidden = !(lastRun && lastRun.score > 0); f.classList.add('wait'); f.classList.remove('in'); lbYou = null;
   $('lbRow').hidden = $('lbLabel').hidden = false; $('lbBtn').disabled = false;
   try { $('lbName').value = localStorage.getItem('flatline_name') || ''; } catch (e) { }
-  lbMsg('Optional. Click anywhere else to play again.');
+  lbMsg('Optional.');
 }
 function showLbForm(tier = 0) {
   if (state !== 'over' || !lastRun || lastRun.score < 1) return;
@@ -1745,10 +1745,14 @@ function showLbForm(tier = 0) {
 let placing = false;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const play = (el, frames, o) => el.animate(frames, o).finished.catch(() => { });
+function showBoardAgain() {
+  const btn = $('boardAgain'); btn.hidden = false;
+  play(btn, [{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], { duration: 300, delay: 120, easing: 'cubic-bezier(.2,.9,.3,1)', fill: 'backwards' });
+}
 function boardMsg(rank) {
   const m = $('boardMsg'); m.textContent = '';
   const b = document.createElement('b'); if (rank === 1) b.appendChild(crown()); b.append(rank === 1 ? "You're #1" : `You placed #${rank}`);
-  m.append(b, 'Click anywhere to play again.');
+  m.append(b);
   play(m, [{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], { duration: 300, easing: 'cubic-bezier(.2,.9,.3,1)' });
 }
 // the board as it stood just before this run: your slot closed, everyone you passed still on their old rank
@@ -1777,7 +1781,7 @@ function buildPlacementBoard(name, rank, top) {
 }
 async function placeOnBoard(name, rank, top) {
   const ov = $('over'), inp = $('lbName');
-  if (RM.matches) { ov.classList.add('boardView'); renderBoard($('overBoard'), lbYou); boardMsg(rank); return; }
+  if (RM.matches) { ov.classList.add('boardView'); renderBoard($('overBoard'), lbYou); boardMsg(rank); showBoardAgain(); return; }
   placing = true;
   // 1. the typed name lifts off the input as a floating tag, and the score column drops away beneath it
   const ir = inp.getBoundingClientRect(), x0 = ir.left + 12, y0 = ir.top + ir.height / 2;
@@ -1846,6 +1850,7 @@ async function placeOnBoard(name, rank, top) {
   // 6. the result
   await sleep(160);
   boardMsg(rank); placing = false;
+  showBoardAgain();
 }
 
 $('lbForm').addEventListener('click', e => e.stopPropagation()); // typing a name mustn't restart the game
