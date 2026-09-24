@@ -148,6 +148,31 @@ kbd{font-family:inherit;display:inline-block;border:2px solid var(--ink);padding
 #confetti i{position:absolute;top:-20px;width:9px;height:14px;animation:conf linear forwards}
 @keyframes conf{to{transform:translateY(110vh) rotate(720deg)}}
 .note{font-size:15px;color:var(--soft);margin-top:14px}
+.panel.split{display:flex;align-items:center;gap:64px;max-width:1100px}
+.panel.split .main{flex:1 1 auto;min-width:0}
+.board{flex:0 0 280px;text-align:left;cursor:default}
+.boardHead{font-size:22px;font-weight:600;color:var(--soft);margin-bottom:6px}
+.rows{list-style:none;margin:0;padding:0;font-size:19px}
+.rows li{display:grid;grid-template-columns:30px 1fr auto;gap:10px;align-items:baseline;padding:4px 0;border-bottom:1px solid rgba(127,127,127,.2)}
+.rows .rk{color:var(--soft);font-weight:600}
+.rows .nm{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rows .sc{font-weight:800}
+.rows li.you,.rows li.you .rk{color:var(--blood)}
+.rows li.empty{display:block;color:var(--soft);font-weight:500;border:0}
+.crown{width:18px;height:14px;color:#e0a526;margin-right:6px;vertical-align:-1px}
+.lbForm{margin-bottom:24px}
+.lbForm.in{animation:lbIn .3s ease-out}
+@keyframes lbIn{from{opacity:0;transform:translateY(8px)}}
+.lbForm label{display:block;font-size:18px;font-weight:600;margin-bottom:8px}
+.lbRow{display:flex;gap:8px}
+.lbRow[hidden]{display:none}
+.lbRow input{flex:1;min-width:0;font:inherit;font-size:20px;font-weight:600;padding:5px 10px;border:2px solid var(--ink);border-radius:2px;background:transparent;color:var(--ink);cursor:text;outline:none}
+.lbRow input:focus{border-color:#e0a526}
+.lbRow button{font:inherit;font-size:18px;font-weight:800;padding:5px 16px;border:2px solid var(--ink);border-radius:2px;background:var(--ink);color:var(--bg);cursor:pointer}
+.lbRow button:disabled{opacity:.5;cursor:default}
+.lbMsg{font-size:15px;font-weight:500;color:var(--soft);margin-top:8px;min-height:18px}
+.lbMsg b{color:var(--ink);font-weight:800;font-size:19px}
+@media (max-width:900px){.overlay{overflow:auto;align-items:flex-start}.panel.split{flex-direction:column;gap:28px}.board{flex:none;width:min(320px,100%)}}
 @media (prefers-reduced-motion: reduce){#toast.go{animation-duration:.01s}}
 </style>
 </head>
@@ -177,7 +202,8 @@ kbd{font-family:inherit;display:inline-block;border:2px solid var(--ink);padding
 </div>
 
 <div id="menu" class="overlay">
-  <div class="panel">
+  <div class="panel split">
+   <div class="main">
     <h1 class="title"><span class="flat">FLATLINE</span></h1>
     <p class="lede">A walled plane, a pistol, and more of them every few seconds. Red pads show where they climb out.</p>
     <dl class="keys">
@@ -193,6 +219,8 @@ kbd{font-family:inherit;display:inline-block;border:2px solid var(--ink);padding
     <div class="cta">Click to start</div>
     <div class="best" id="menuBest"></div>
     <div class="note" id="touchNote" hidden>Needs a mouse and keyboard.</div>
+   </div>
+    <aside class="board" aria-label="Leaderboard"><div class="boardHead">Leaderboard</div><ol class="rows" id="menuBoard"></ol></aside>
   </div>
 </div>
 
@@ -201,13 +229,23 @@ kbd{font-family:inherit;display:inline-block;border:2px solid var(--ink);padding
 </div>
 
 <div id="over" class="overlay hidden"><div id="confetti"></div>
-  <div class="panel">
+  <div class="panel split">
+   <div class="main">
     <div class="overline">Overwhelmed after <span id="oTime">0:00</span></div>
     <div class="recBanner" id="oRec">New record</div>
     <div class="big" id="oKills">0</div>
     <div class="overline" id="oLabel">zombies eliminated</div>
     <div class="best" id="oBest"></div>
     <div style="margin-top:30px" class="cta">Click to try again</div>
+   </div>
+    <aside class="board" aria-label="Leaderboard">
+      <form class="lbForm" id="lbForm" autocomplete="off" hidden>
+        <label for="lbName" id="lbLabel">Add your score to the leaderboard</label>
+        <div class="lbRow" id="lbRow"><input id="lbName" maxlength="16" placeholder="Your name" spellcheck="false"><button type="submit" id="lbBtn">Submit</button></div>
+        <div class="lbMsg" id="lbMsg"></div>
+      </form>
+      <div class="boardHead">Leaderboard</div><ol class="rows" id="overBoard"></ol>
+    </aside>
   </div>
 </div>
 
@@ -1496,6 +1534,7 @@ function die() {
   $('oBest').innerHTML = newRec && kills > 0 ? (startBest > 0 ? `Previous best: ${startBest}` : 'First record set') : `Record: ${bestRec}`;
   $('oRec').textContent = startBest > 0 ? `New record  +${kills - startBest}` : 'New record';
   $('menuBest').textContent = `Best: ${bestRec} eliminated`;
+  lastRun = { score: kills, secs: Math.max(1, Math.floor(gameT)), sent: false };
 }
 let overRec = false;
 function showOver() {
@@ -1503,13 +1542,94 @@ function showOver() {
   $('hud').classList.remove('on'); $('over').classList.remove('hidden');
   $('kills').classList.remove('rec');
   const ov = $('over'); ov.classList.toggle('record', overRec);
-  // count the kills up
+  if (overRec) SFX.fanfare(); // the record fanfare leads, then the count-up and stamp play out
+  resetLbForm(); loadBoard();
+  // count the kills up, then offer the leaderboard
   const el = $('oKills'), target = kills, t0 = performance.now(), dur = overRec ? 1400 : 700;
-  const tick = () => { const k = Math.min(1, (performance.now() - t0) / dur), e = 1 - Math.pow(1 - k, 3); el.textContent = Math.round(target * e); if (k < 1) requestAnimationFrame(tick); else if (overRec) { el.classList.remove('slam'); void el.offsetWidth; el.classList.add('slam'); SFX.fanfare(); burstConfetti(); } };
+  const tick = () => {
+    const k = Math.min(1, (performance.now() - t0) / dur), e = 1 - Math.pow(1 - k, 3); el.textContent = Math.round(target * e);
+    if (k < 1) { requestAnimationFrame(tick); return; }
+    if (overRec) { el.classList.remove('slam'); void el.offsetWidth; el.classList.add('slam'); burstConfetti(); }
+    setTimeout(showLbForm, overRec ? 450 : 150);
+  };
   tick();
   wantLock = false; if (document.exitPointerLock) document.exitPointerLock();
 }
 const fmtTime = t => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
+
+/* ====================== LEADERBOARD ====================== */
+// Global top scores from a small Cloudflare Worker (source in leaderboard/). Entering a name is optional.
+const LB_URL = 'https://flatline-leaderboard.alrightyth3nn.workers.dev/scores';
+const NAME_OK = /^[\p{L}\p{N} _.\-]{1,16}$/u;
+let lbTop = null, lbFailed = false, lastRun = null, lbYou = null;
+function crown() {
+  const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); s.setAttribute('class', 'crown'); s.setAttribute('viewBox', '0 0 24 18'); s.setAttribute('aria-hidden', 'true');
+  const p = document.createElementNS('http://www.w3.org/2000/svg', 'path'); p.setAttribute('d', 'M1 4.5l5.8 4.7L12 1l5.2 8.2L23 4.5 20.8 17H3.2z'); p.setAttribute('fill', 'currentColor');
+  s.appendChild(p); return s;
+}
+function renderBoard(ol, you) {
+  // built with DOM nodes, never innerHTML: names come from other players
+  ol.textContent = '';
+  const span = (cls, text) => { const s = document.createElement('span'); s.className = cls; s.textContent = text; return s; };
+  if (!lbTop || !lbTop.length) {
+    const li = document.createElement('li'); li.className = 'empty';
+    li.textContent = !lbTop ? (lbFailed ? 'Leaderboard unavailable right now.' : 'Loading…') : 'No scores yet. Be the first.';
+    ol.appendChild(li); return;
+  }
+  for (const r of lbTop) {
+    const li = document.createElement('li'), nm = span('nm', r.name); nm.title = r.name;
+    if (r.rank === 1) nm.prepend(crown());
+    li.append(span('rk', r.rank), nm, span('sc', r.score));
+    if (you && r.name.toLowerCase() === you.name.toLowerCase() && r.score === you.score) li.classList.add('you');
+    ol.appendChild(li);
+  }
+}
+function renderBoards() { renderBoard($('menuBoard')); renderBoard($('overBoard'), lbYou); }
+async function loadBoard() {
+  try {
+    const r = await fetch(LB_URL + '?limit=10', { cache: 'no-store' });
+    if (!r.ok) throw new Error(r.status);
+    lbTop = (await r.json()).top; lbFailed = false;
+  } catch (e) { lbFailed = true; }
+  renderBoards();
+}
+function lbMsg(text, strong, withCrown) {
+  const m = $('lbMsg'); m.textContent = '';
+  if (strong) { const b = document.createElement('b'); if (withCrown) b.appendChild(crown()); b.append(strong); m.append(b, document.createElement('br')); }
+  m.append(text);
+}
+function resetLbForm() {
+  const f = $('lbForm'); f.hidden = true; f.classList.remove('in'); lbYou = null;
+  $('lbRow').hidden = $('lbLabel').hidden = false; $('lbBtn').disabled = false;
+  try { $('lbName').value = localStorage.getItem('flatline_name') || ''; } catch (e) { }
+  lbMsg('Optional. Click anywhere else to play again.');
+}
+function showLbForm() {
+  if (state !== 'over' || !lastRun || lastRun.score < 1) return;
+  const f = $('lbForm'); f.hidden = false; f.classList.add('in');
+  $('lbName').focus({ preventScroll: true });
+}
+$('lbForm').addEventListener('click', e => e.stopPropagation()); // typing a name mustn't restart the game
+$('lbForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  if (!lastRun || lastRun.sent || $('lbBtn').disabled) return;
+  const name = $('lbName').value.trim().replace(/\s+/g, ' ');
+  if (!NAME_OK.test(name)) { lbMsg('Use 1 to 16 letters, numbers, spaces, dots, dashes or underscores.'); return; }
+  $('lbBtn').disabled = true; lbMsg('Submitting…');
+  try {
+    const r = await fetch(LB_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, score: lastRun.score, secs: lastRun.secs }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || "The leaderboard didn't accept that. Try again.");
+    lastRun.sent = true; try { localStorage.setItem('flatline_name', name); } catch (e) { }
+    lbTop = d.top; lbFailed = false; lbYou = { name, score: lastRun.score }; renderBoards();
+    $('lbRow').hidden = $('lbLabel').hidden = true;
+    lbMsg('Click anywhere to play again.', d.rank === 1 ? "You're #1" : `You placed #${d.rank}`, d.rank === 1);
+  } catch (err) {
+    $('lbBtn').disabled = false;
+    lbMsg(err instanceof TypeError ? "Couldn't reach the leaderboard. Try again." : err.message);
+  }
+});
+loadBoard();
 
 /* ====================== GRENADES ====================== */
 function quickNade() {

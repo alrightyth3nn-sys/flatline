@@ -1,0 +1,8 @@
+name = "flatline-leaderboard"
+main = "worker.js"
+compatibility_date = "2026-09-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "flatline-leaderboard"
+database_id = "6f0eee2b-b633-4c63-844f-de3b014a897f"
