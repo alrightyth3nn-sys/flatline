@@ -120,6 +120,25 @@ kbd{font-family:inherit;display:inline-block;border:2px solid var(--ink);padding
 #objective b{display:block;font-size:40px;font-weight:800}
 #objective span{display:block;font-size:26px;font-weight:700;color:#ffc24a}
 #objective.pop span{animation:kpop .2s ease-out}
+#unlock{position:absolute;top:35%;left:0;right:0;height:0;pointer-events:none}
+#unlock .uBand{position:absolute;left:0;right:0;top:-54px;height:108px;background:var(--ink);border-top:3px solid #e0a526;border-bottom:3px solid #e0a526;box-sizing:border-box;overflow:hidden;opacity:0}
+#unlock .uBand::after{content:'';position:absolute;inset:0;background:linear-gradient(100deg,transparent 38%,rgba(255,255,255,.5) 50%,transparent 62%);transform:translateX(-110%)}
+#unlock .uIn{position:absolute;left:0;right:0;top:-54px;height:108px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--bg)}
+#unlock small{font-size:14px;font-weight:700;letter-spacing:.32em;text-transform:uppercase;opacity:0}
+#unlock b{font-size:58px;font-weight:800;line-height:.88;text-transform:uppercase;letter-spacing:.01em;opacity:0}
+#unlock span{font-size:16px;font-weight:600;margin-top:5px;opacity:0}
+#unlock.go .uBand{animation:uBand 1.8s forwards}
+#unlock.go .uBand::after{animation:uSheen .45s .1s ease-out forwards}
+#unlock.go b{animation:uName 1.8s forwards}
+#unlock.go small,#unlock.go span{animation:uSub 1.8s forwards}
+@keyframes uBand{0%{opacity:1;transform:scale(0,.3);animation-timing-function:cubic-bezier(.2,.9,.3,1)}8%{opacity:1;transform:scale(1.015,1.15)}14%{transform:none}84%{opacity:1;transform:none;animation-timing-function:ease-in}100%{opacity:0;transform:scaleY(0)}}
+@keyframes uSheen{to{transform:translateX(110%)}}
+@keyframes uName{0%{opacity:0;transform:scale(2.6);animation-timing-function:cubic-bezier(.3,0,.8,.5)}7%{opacity:1;transform:scale(.93)}12%{transform:scale(1.04)}17%{transform:none}84%{opacity:1;transform:none;animation-timing-function:ease-in}100%{opacity:0;transform:translateY(-10px) scale(.96)}}
+@keyframes uSub{0%,9%{opacity:0;transform:translateY(6px)}17%{opacity:.8;transform:none}84%{opacity:.8}100%{opacity:0}}
+.wep{--x:0px}
+.wep.on{--x:6px}
+.wep.fresh{animation:wFresh 1s ease-out}
+@keyframes wFresh{0%{transform:translateX(calc(var(--x) + 24px)) scale(1.3);color:#e0a526;opacity:1}35%{transform:translateX(var(--x));color:#e0a526;opacity:1}100%{transform:translateX(var(--x))}}
 #toast{position:absolute;top:28%;left:0;right:0;text-align:center;font-size:30px;font-weight:800;opacity:0}
 #toast small{display:block;font-size:18px;font-weight:500;color:var(--soft)}
 #toast.go{animation:toast 2.8s ease-out}
@@ -173,6 +192,7 @@ kbd{font-family:inherit;display:inline-block;border:2px solid var(--ink);padding
   <div id="powWrap"><div id="powLbl">Upheaval</div><div id="pow"></div></div>
   <div id="hpWrap"><div id="hp"></div></div>
   <div id="toast"></div>
+  <div id="unlock"><div class="uBand"></div><div class="uIn"><small>New weapon</small><b id="unlockName"></b><span id="unlockHint"></span></div></div>
   <div id="prompt"><kbd>E</kbd>Man the machine gun</div>
   <div id="objective"><b id="objTxt">Land 6 headshots</b><span id="objCnt">0 / 6</span></div>
   <div id="uphTitle">Upheaval</div>
@@ -435,6 +455,15 @@ const SFX = {
     nz({ type: 'highpass', f: 7000, dur: .02, g: .25, dest: dry });
   },
   unlock() { tn({ type: 'triangle', f0: 440, f1: 445, dur: .14, g: .3 }); tn({ t: .12, type: 'triangle', f0: 660, f1: 665, dur: .3, g: .3 }); },
+  unlockBig() {
+    // punchy thump + bright major stab that jumps an octave, with a shimmer tail
+    tn({ f0: 170, f1: 38, dur: .32, g: 1.1, dest: dry });
+    nz({ type: 'highpass', f: 4200, dur: .035, g: .55, dest: dry });
+    [523, 659, 784].forEach(f => { tn({ type: 'triangle', f0: f, f1: f * 1.003, dur: .16, g: .2, dest: dry }); tn({ type: 'square', f0: f / 2, f1: f / 2, dur: .09, g: .035, dest: dry }); });
+    [1047, 1319, 1568].forEach(f => tn({ t: .085, type: 'triangle', f0: f, f1: f * 1.004, dur: .55, g: .17, dest: dry }));
+    tn({ t: .085, type: 'sine', f0: 2093, f1: 2100, dur: .7, g: .07, dest: dry });
+    nz({ t: .08, type: 'highpass', f: 7500, dur: .5, g: .1, a: .02, dest: dry });
+  },
   boom(g = 1) {
     tn({ f0: 110, f1: 22, dur: 1.3, g: 2 * g, dest: crunch });
     nz({ f: 3800, f1: 90, dur: 1.2, g: 2 * g, dest: crunch });
@@ -586,13 +615,13 @@ const WEAPONS = [
   { id: 0, name: 'Pistol', unlock: 0, mag: 12, reload: 1.0, rate: .1, auto: false, pellets: 1, spread: .004, bloomAdd: .012, moveSpread: .012,
     dmg: { head: 150, torso: 55, arm: 40, leg: 44 }, impulse: 6.5, pierce: 1, falloff: false,
     camKick: .05, gunKick: .21, gunRot: .46, shake: .38, fov: 3.5, tW: .024, tLife: .07, flash: .8, push: .5, stop: .028 },
-  { id: 1, name: 'Shotgun', unlock: 55, mag: 7, reload: .32, infinite: true, rate: .7, auto: true, pellets: 12, spread: .085, bloomAdd: 0, moveSpread: .01,
+  { id: 1, name: 'Shotgun', unlock: 60, mag: 7, reload: .32, infinite: true, rate: .7, auto: true, pellets: 12, spread: .085, bloomAdd: 0, moveSpread: .01,
     dmg: { head: 1e6, torso: 1e6, arm: 1e6, leg: 1e6 }, impulse: 16, pierce: 5, falloff: false,
     camKick: .16, gunKick: .55, gunRot: 1.0, shake: 1, fov: 12, tW: .016, tLife: .07, flash: 1.7, push: 3.2, stop: .05 },
   { id: 2, name: 'Assault rifle', unlock: 15, mag: 30, reload: 1.6, rate: .085, auto: true, pellets: 1, spread: .005, bloomAdd: .0035, moveSpread: .014,
     dmg: { head: 200, torso: 46, arm: 32, leg: 36 }, impulse: 4.4, pierce: 1, falloff: false,
     camKick: .022, gunKick: .1, gunRot: .17, shake: .17, fov: 1.3, tW: .02, tLife: .05, flash: .75, push: .12, stop: .012 },
-  { id: 3, name: 'Grenade', unlock: 30, mag: 3, grenade: true, rate: .6, auto: false, recharge: 6 },
+  { id: 3, name: 'Grenade', unlock: 100, mag: 3, grenade: true, rate: .6, auto: false, recharge: 6 },
 ];
 const gunHolder = new THREE.Group(); scene.add(gunHolder);
 const gunRoot = new THREE.Group(); gunHolder.add(gunRoot);
@@ -1018,6 +1047,11 @@ let realDt = 1 / 120;
 let warp = 1, tWarp = 1, aWarp = 1, pow = 0, abilT = 0, arBurst = 0, lastARShot = -9;
 const ABIL_T = 5;
 let state = 'menu', gameT = 0, kills = 0, hitstop = 0, dyingT = 0;
+// difficulty runs on its own clock: game time plus a one-off jump when the first machine gun's slow motion ends.
+// DIFF_950 is the earliest game time by which the spawner can have produced ~950 zombies, i.e. the pressure of a 950-kill run.
+const DIFF_950 = 112, DIFF_KILLS = 950;
+let diffOff = 0, diffJumped = false;
+const diffT = () => gameT + diffOff;
 let cur = 0, cool = 0, clickBuf = 0, mouseDown = false, switchT = 0, bloom = 0;
 let reloading = false, reloadT = 0, reloadTok = 0, pumpT = -1, boltT = -1;
 let unlocked = [true, false, false, false], ammo = WEAPONS.map(w => w.mag);
@@ -1050,6 +1084,7 @@ function resetGame() {
   player.pos.set(0, 0, 8); player.vel.set(0, 0, 0); player.hp = 100; player.dead = false; player.yaw = 0; player.pitch = -.12;
   pModel.rotation.set(0, 0, 0); pModel.position.y = 0;
   gameT = 0; kills = 0; cur = 0; cool = 0; reloading = false; pumpT = boltT = -1; bloom = 0;
+  diffOff = 0; diffJumped = false; newWep = null;
   unlocked = [true, false, false, false]; ammo = WEAPONS.map(w => w.mag); startBest = bestRec; recShown = false;
   spawnT = .6; trauma = 0; hitstop = 0; dyingT = 0;
   selectGun(0, true);
@@ -1372,11 +1407,23 @@ function kill(z, part, dir, imp, w, lx, lz) {
   if (gameT - lastKillSnd > .06) { lastKillSnd = gameT; SFX.kill(w.id >= 2 || key === 'head'); }
 
   rebuildHits();
-  for (let i = 1; i < WEAPONS.length; i++) if (!unlocked[i] && kills >= WEAPONS[i].unlock) {
-    unlocked[i] = true; SFX.unlock();
-    const t = $('toast'); t.innerHTML = `${WEAPONS[i].name} unlocked<small>${i === 3 ? 'Press G to throw' : i === 1 ? 'Press 3 to equip' : 'Press 2 to equip'}</small>`;
-    t.classList.remove('go'); void t.offsetWidth; t.classList.add('go'); buildWepUI();
-  }
+  for (let i = 1; i < WEAPONS.length; i++) if (!unlocked[i] && kills >= WEAPONS[i].unlock) unlockWeapon(i);
+}
+let newWep = null;
+function unlockWeapon(i) {
+  unlocked[i] = true; newWep = { i, t0: performance.now() };
+  SFX.unlockBig(); flashScreen(.16); CAM.fov.x += 4; CAM.jy.v += 3;
+  $('unlockName').textContent = i === 3 ? 'Grenades' : WEAPONS[i].name;
+  $('unlockHint').textContent = i === 3 ? 'Press G to throw' : `Equipped, key ${i === 1 ? 3 : 2}`;
+  const u = $('unlock'); u.classList.remove('go'); void u.offsetWidth; u.classList.add('go');
+  buildWepUI();
+  // grenades aren't a slot; guns are swapped into your hands on the next step (never mid-shot).
+  // During Upheaval the pistol stays locked in and the new gun comes out when it ends.
+  if (i !== 3) later(0, () => {
+    if (!unlocked[i] || player.dead) return;
+    if (ABL.phase !== 'none' && ABL.phase !== 'outro') { ABL.prev = i; return; }
+    if (cur !== i) selectGun(i, player.inTurret);
+  });
 }
 function popPart(z, obj, dir, imp, name) {
   if (z.popped[name]) return;
@@ -1978,7 +2025,7 @@ function tickTurret(dt) {
     if (a < .4) tWarp = 1 - .8 * (1 - Math.pow(1 - a / .4, 3));
     else if (a < 2.9) tWarp = .2;
     else if (a < 4.0) { tWarp = .2 + .8 * (.5 - .5 * Math.cos(Math.PI * (a - 2.9) / 1.1)); if (!T.rewound) { T.rewound = true; SFX.rewind(); } }
-    else tWarp = 1;
+    else { tWarp = 1; if (!diffJumped) jumpDifficulty(); }
     const firing = mouseDown && state === 'play' && !player.dead;
     T.spin += ((firing ? 1 : 0) - T.spin) * Math.min(1, dt * (firing ? 6 : 2.2));
     T.rot += dt * T.spin * 42;
@@ -2252,13 +2299,29 @@ function queueSpawn() {
   const pad = list[Math.random() * list.length | 0];
   pending.push({ pad, t: .9 }); pad.pend++;
 }
+// once per run, as the first machine gun's slow motion wears off: skip difficulty ahead to a 950-kill run,
+// unless the player already has 950 kills (then it stays on real game time)
+function jumpDifficulty() {
+  diffJumped = true;
+  const t0 = diffT(), t1 = DIFF_950;
+  if (kills >= DIFF_KILLS || t1 <= t0) return;
+  diffOff += t1 - t0;
+  // zombies already on the field catch up too, so the change is felt straight away
+  for (const z of zombies) {
+    if (z.state === 'dead') continue;
+    const J = z.type === 'jumper';
+    z.speed *= J ? (1.7 + t1 * .012) / (1.7 + t0 * .012) : (1.45 + t1 * .017) / (1.45 + t0 * .017);
+    const hk = (1 + t1 / 150) / (1 + t0 / 150); z.hpMax *= hk; z.hp *= hk;
+  }
+}
 function tickSpawns(dt) {
   spawnT -= dt;
+  const D = diffT();
   const alive = zombies.reduce((n, z) => n + (z.state !== 'dead' ? 1 : 0), 0) + pending.length;
-  const maxAlive = Math.min(85, Math.floor(6 + gameT / 1.35));
+  const maxAlive = Math.min(85, Math.floor(6 + D / 1.35));
   if (spawnT <= 0) {
-    spawnT = Math.max(.18, 1.6 * Math.exp(-gameT / 34)) * rand(.8, 1.2);
-    const batch = 1 + Math.floor(Math.random() * (1.5 + gameT / 30));
+    spawnT = Math.max(.18, 1.6 * Math.exp(-D / 34)) * rand(.8, 1.2);
+    const batch = 1 + Math.floor(Math.random() * (1.5 + D / 30));
     for (let i = 0; i < batch && alive + i < maxAlive; i++) queueSpawn();
   }
   let spawned = false;
@@ -2267,8 +2330,8 @@ function tickSpawns(dt) {
     if (sp.t <= 0) {
       pending.splice(i, 1); sp.pad.pend--; sp.pad.flare = 1;
       const nJ = zombies.reduce((n, q) => n + (q.type === 'jumper' && q.state !== 'dead' ? 1 : 0), 0);
-      const mgOn = TUR.phase === 'active', type = gameT > 20 && nJ < (mgOn ? 1 : 2) && Math.random() < (mgOn ? .02 : .06) ? 'jumper' : undefined;
-      zombies.push(new Zombie(new V3(sp.pad.x + rand(-.6, .6), 0, sp.pad.z + rand(-.6, .6)), gameT, type));
+      const mgOn = TUR.phase === 'active', type = D > 20 && nJ < (mgOn ? 1 : 2) && Math.random() < (mgOn ? .02 : .06) ? 'jumper' : undefined;
+      zombies.push(new Zombie(new V3(sp.pad.x + rand(-.6, .6), 0, sp.pad.z + rand(-.6, .6)), D, type));
       dust(new V3(sp.pad.x, 0, sp.pad.z), 6); spawned = true;
     }
   }
@@ -2500,12 +2563,15 @@ function updateCamera() {
 /* ====================== HUD ====================== */
 function buildWepUI() {
   if (!$('weps')) return;
+  // the list is rebuilt often, so a freshly unlocked row resumes its flash where it left off instead of restarting
+  const age = newWep ? performance.now() - newWep.t0 : 1e9;
+  const fresh = i => newWep && newWep.i === i && age < 1000 ? ` fresh" style="animation-delay:-${age | 0}ms` : '';
   $('weps').innerHTML = [0, 2, 1].map(i => ({ w: WEAPONS[i], i })).map(({ w, i }, n) => {
     const cls = ['wep']; if (i === cur) cls.push('on'); if (!unlocked[i]) cls.push('locked');
     const extra = unlocked[i] ? '' : `<i>at ${w.unlock} kills</i>`;
-    return `<div class="${cls.join(' ')}"><b>${n + 1}</b><span>${w.name}</span>${extra}</div>`;
+    return `<div class="${cls.join(' ')}${fresh(i)}"><b>${n + 1}</b><span>${w.name}</span>${extra}</div>`;
   }).join('') + (unlocked[3]
-    ? `<div class="wep gren"><b>G</b><span>Grenade</span><i>${ammo[3]} left${ammo[3] < WEAPONS[3].mag ? `, next in ${Math.max(1, Math.ceil(gRecharge))}s` : ''}</i></div>`
+    ? `<div class="wep gren${fresh(3)}"><b>G</b><span>Grenade</span><i>${ammo[3]} left${ammo[3] < WEAPONS[3].mag ? `, next in ${Math.max(1, Math.ceil(gRecharge))}s` : ''}</i></div>`
     : `<div class="wep locked"><b>G</b><span>Grenade</span><i>at ${WEAPONS[3].unlock} kills</i></div>`);
 }
 function updateAmmoUI() {
