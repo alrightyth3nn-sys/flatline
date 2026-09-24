@@ -48,21 +48,15 @@ canvas{display:block}
 #relRing .fg{stroke:#fff;stroke-linecap:round;stroke-dasharray:113.1;stroke-dashoffset:113.1;filter:drop-shadow(0 0 1px rgba(0,0,0,.6))}
 #dot{position:fixed;left:50%;top:50%;width:6px;height:6px;margin:-3px 0 0 -3px;box-sizing:border-box;border-radius:50%;background:#fff;
   box-shadow:0 0 0 1px rgba(0,0,0,.4);pointer-events:none;z-index:5;transition:background .08s}
-#dot.hit{animation:dhit .16s ease-out}
 #dot.head{background:#ff5a47}
-@keyframes dhit{0%{transform:scale(2.4)}100%{transform:scale(1)}}
 #ring{position:fixed;left:50%;top:50%;width:34px;height:34px;margin:-17px 0 0 -17px;box-sizing:border-box;border-radius:50%;
   border:2px solid #fff;opacity:0;pointer-events:none;z-index:5}
-#ring.go{animation:ring .32s ease-out}
-@keyframes ring{0%{opacity:.95;transform:scale(.35)}100%{opacity:0;transform:scale(1.35)}}
 #hurt{position:fixed;inset:0;pointer-events:none;z-index:3;opacity:0;
   background:radial-gradient(ellipse at center,rgba(168,40,31,0) 45%,rgba(168,40,31,.55) 100%)}
 #hud{position:fixed;inset:0;pointer-events:none;z-index:4;opacity:0;transition:opacity .3s}
 #hud.on{opacity:1}
 #score{position:absolute;top:calc(18px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);text-align:center;line-height:.9}
 #kills{font-size:54px;font-weight:800;letter-spacing:-.01em;display:inline-block}
-#kills.pop{animation:kpop .22s ease-out}
-@keyframes kpop{0%{transform:scale(1.35)}100%{transform:scale(1)}}
 #score small{display:block;font-size:15px;font-weight:500;color:var(--soft);margin-top:4px}
 #timer{position:absolute;top:calc(22px + env(safe-area-inset-top,0px));right:26px;font-size:22px;font-weight:600;color:var(--soft)}
 #weps{position:absolute;left:26px;bottom:calc(24px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:4px}
@@ -119,7 +113,6 @@ kbd{font-family:inherit;display:inline-block;border:2px solid var(--ink);padding
 #objective.on{opacity:1;transform:none}
 #objective b{display:block;font-size:40px;font-weight:800}
 #objective span{display:block;font-size:26px;font-weight:700;color:#ffc24a}
-#objective.pop span{animation:kpop .2s ease-out}
 .wep.fresh{animation:wFresh 1s ease-out}
 @keyframes wFresh{0%,30%{color:#e0a526;opacity:1}}
 #toast{position:absolute;top:28%;left:0;right:0;text-align:center;font-size:30px;font-weight:800;opacity:0}
@@ -155,7 +148,7 @@ kbd{font-family:inherit;display:inline-block;border:2px solid var(--ink);padding
 #confetti i{position:absolute;top:-20px;width:9px;height:14px;animation:conf linear forwards}
 @keyframes conf{to{transform:translateY(110vh) rotate(720deg)}}
 .note{font-size:15px;color:var(--soft);margin-top:14px}
-@media (prefers-reduced-motion: reduce){#toast.go,#kills.pop,#ring.go,#dot.hit{animation-duration:.01s}}
+@media (prefers-reduced-motion: reduce){#toast.go{animation-duration:.01s}}
 </style>
 </head>
 <body>
@@ -475,7 +468,7 @@ const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 renderer.setSize(innerWidth, innerHeight);
 $('app').appendChild(renderer.domElement);
-const scene = new THREE.Scene();
+const scene = new THREE.Scene(); scene.autoUpdate = false;
 // colour grade pass for slow motion (desaturate + contrast + vignette), eased every frame
 const RT = renderer.capabilities.isWebGL2 && THREE.WebGLMultisampleRenderTarget ? THREE.WebGLMultisampleRenderTarget : THREE.WebGLRenderTarget;
 const postRT = new RT(1, 1);
@@ -492,6 +485,7 @@ let gradeK = 0;
 function renderFrame(real) {
   const target = warp < .97 ? 1 : 0;
   gradeK += (target - gradeK) * Math.min(1, real * (target ? 7 : 4));
+  scene.updateMatrixWorld(); fillBatches(); // once per frame; scene.autoUpdate is off so render doesn't repeat it
   if (gradeK < .003) { gradeK = 0; renderer.render(scene, camera); return; }
   renderer.setRenderTarget(postRT); renderer.render(scene, camera); renderer.setRenderTarget(null);
   postMat.uniforms.k.value = gradeK; renderer.render(postScene, postCam);
@@ -535,8 +529,9 @@ const M = {
   fireCore: new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, depthWrite: false }),
   shock: new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, depthWrite: false, side: THREE.DoubleSide }),
 };
+let zombieCol; // read once per theme change: getComputedStyle on every spawn forces a style recalc mid-frame
 function applyTheme() {
-  const bg = col('--bg');
+  const bg = col('--bg'); zombieCol = col('--zombie');
   scene.background = bg; scene.fog.color = bg;
   groundMat.color = col('--void'); floorMat.color = col('--ground'); wallMat.color = col('--wall');
   if (grid) scene.remove(grid);
@@ -551,6 +546,68 @@ applyTheme();
 if (window.matchMedia) matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
 
 function mbox(mat, sx, sy, sz, x = 0, y = 0, z = 0) { const m = new THREE.Mesh(BOX, mat); m.scale.set(sx, sy, sz); m.position.set(x, y, z); return m; }
+
+/* ====================== BATCHING ====================== */
+// Zombie parts, eyes and shadows, particles and blood pools would each be a draw call (1000+ late in a run).
+// Instead those meshes stay in the scene graph for transforms and raycasts but live on a layer the camera
+// doesn't render, and every frame their world matrices are copied into a few instanced batches.
+const HIDDEN_LAYER = 1, batches = [], batchByMat = new Map();
+function makeBatch(geo, mat, cap, src, zombie) {
+  const im = new THREE.InstancedMesh(geo, mat, cap); im.frustumCulled = false; im.count = 0;
+  im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  if (zombie) { im.instanceColor = new THREE.BufferAttribute(new Float32Array(cap * 3), 3); im.instanceColor.setUsage(THREE.DynamicDrawUsage); }
+  scene.add(im);
+  const b = { im, geo, mat, cap, src, zombie, n: 0 }; batches.push(b); return b;
+}
+// zombie bodies: one batch for every zombie; per-instance colour, plus per-instance emissive for the hit flash
+const zGeo = BOX.clone();
+zGeo.setAttribute('iEm', new THREE.InstancedBufferAttribute(new Float32Array(1600 * 3), 3).setUsage(THREE.DynamicDrawUsage));
+const zBodyMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+zBodyMat.onBeforeCompile = s => {
+  s.vertexShader = 'attribute vec3 iEm;\nvarying vec3 vEm;\n' + s.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n\tvEm = iEm;');
+  s.fragmentShader = 'varying vec3 vEm;\n' + s.fragmentShader.replace('vec3 totalEmissiveRadiance = emissive;', 'vec3 totalEmissiveRadiance = vEm;');
+};
+const zBody = makeBatch(zGeo, zBodyMat, 1600, null, true);
+// everything else shares its source material, so one batch per (geometry, material) pair
+function batchMesh(m, zombieBody) {
+  let b = zombieBody ? zBody : null;
+  if (!b) {
+    const key = m.material.uuid + m.geometry.uuid; b = batchByMat.get(key);
+    if (!b) { b = makeBatch(m.geometry, m.material.clone(), 512, m.material); batchByMat.set(key, b); }
+  }
+  m.bk = b; m.layers.set(HIDDEN_LAYER); return m;
+}
+function growBatch(b) {
+  const cap = b.cap * 2, old = b.im;
+  if (b.zombie) { const a = new THREE.InstancedBufferAttribute(new Float32Array(cap * 3), 3).setUsage(THREE.DynamicDrawUsage); a.array.set(b.geo.attributes.iEm.array); b.geo.setAttribute('iEm', a); }
+  const im = new THREE.InstancedMesh(b.geo, b.mat, cap); im.frustumCulled = false; im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  im.instanceMatrix.array.set(old.instanceMatrix.array);
+  if (b.zombie) { im.instanceColor = new THREE.BufferAttribute(new Float32Array(cap * 3), 3); im.instanceColor.setUsage(THREE.DynamicDrawUsage); im.instanceColor.array.set(old.instanceColor.array); }
+  scene.remove(old); old.dispose(); scene.add(im); b.im = im; b.cap = cap;
+}
+const _em = new THREE.Color(), _shown = [];
+function fillBatches() {
+  for (const b of batches) b.n = 0;
+  // collect first: growing a batch swaps its mesh in the scene, which must not happen mid-traversal
+  _shown.length = 0; scene.traverseVisible(o => { if (o.bk) _shown.push(o); });
+  for (const o of _shown) {
+    const b = o.bk;
+    if (b.n >= b.cap) growBatch(b);
+    const i = b.n++; o.matrixWorld.toArray(b.im.instanceMatrix.array, i * 16);
+    if (b.zombie) {
+      const mt = o.material; mt.color.toArray(b.im.instanceColor.array, i * 3);
+      _em.copy(mt.emissive).multiplyScalar(mt.emissiveIntensity).toArray(b.geo.attributes.iEm.array, i * 3);
+    }
+  }
+  for (const b of batches) {
+    const im = b.im; im.count = b.n; im.visible = b.n > 0; if (!b.n) continue;
+    im.instanceMatrix.updateRange.count = b.n * 16; im.instanceMatrix.needsUpdate = true;
+    if (b.zombie) {
+      im.instanceColor.updateRange.count = b.n * 3; im.instanceColor.needsUpdate = true;
+      const e = b.geo.attributes.iEm; e.updateRange.count = b.n * 3; e.needsUpdate = true;
+    } else { b.mat.color.copy(b.src.color); b.mat.opacity = b.src.opacity; }
+  }
+}
 
 // arena walls
 const WALL_H = .85, WT = .6;
@@ -673,7 +730,7 @@ class Zombie {
     this.attackT = 0; this.atkCd = rand(.2, .6); this.legDmg = 0; this.limp = Math.random() < .5 ? 1 : -1;
     this.air = 0; this.vy = 0; this.stun = 0; this.wind = Math.random() * TAU; this.catchStep = 0; this.flash = 0; this.fallDir = -1; this.fallRoll = 0; this.deadArm = [0, 0]; this.landed = false; this.groanT = rand(1, 7);
     const s = rand(.9, 1.1);
-    const skinC = J ? new THREE.Color('#7b6a86') : col('--zombie').offsetHSL(rand(-.03, .03), rand(-.05, .05), rand(-.06, .05));
+    const skinC = J ? new THREE.Color('#7b6a86') : zombieCol.clone().offsetHSL(rand(-.03, .03), rand(-.05, .05), rand(-.06, .05));
     this.skin = new THREE.MeshLambertMaterial({ color: skinC, emissive: 0xffffff, emissiveIntensity: 0 });
     this.cloth = new THREE.MeshLambertMaterial({ color: new THREE.Color(J ? '#2c2931' : CLOTHES[Math.random() * CLOTHES.length | 0]), emissive: 0xffffff, emissiveIntensity: 0 });
     this.pants = new THREE.MeshLambertMaterial({ color: this.cloth.color.clone().multiplyScalar(.72), emissive: 0xffffff, emissiveIntensity: 0 });
@@ -694,7 +751,7 @@ class Zombie {
     const legL = mbox(this.pants, .21, .95, .23, 0, -.47, 0); this.hipL.add(legL);
     this.hipR = new THREE.Group(); this.hipR.position.set(-.15, 0, 0); this.pelvis.add(this.hipR);
     const legR = mbox(this.pants, .21, .95, .23, 0, -.47, 0); this.hipR.add(legR);
-    this.shadow = new THREE.Mesh(CIRC, shadowMat); this.shadow.scale.setScalar(.5); this.shadow.position.y = .012; scene.add(this.shadow);
+    this.shadow = batchMesh(new THREE.Mesh(CIRC, shadowMat)); this.shadow.scale.setScalar(.5); this.shadow.position.y = .012; scene.add(this.shadow);
     const tag = (m, p) => { m.userData = { z: this, part: p }; return m; };
     this.hitParts = [tag(head, 'head'), tag(torso, 'torso'), tag(hips, 'hips'), tag(armL, 'armL'), tag(armR, 'armR'), tag(legL, 'legL'), tag(legR, 'legR')];
     this.popped = {};
@@ -706,6 +763,7 @@ class Zombie {
       lL: new Spring(210, 15), lR: new Spring(210, 15), cr: new Spring(150, 13)
     };
     this.s.aL.x = this.s.aR.x = -1.35;
+    R.traverse(o => { if (o.isMesh) batchMesh(o, o.material !== M.eye && o.material !== M.eyeRed); });
     scene.add(R); this.sync();
   }
   update(dt) {
@@ -960,7 +1018,7 @@ function groanAt(z, dist) {
 /* ====================== FX ====================== */
 let parts = [], pools = [], tracers = [], debris = [], events = [];
 function particle(pos, vel, mat, size, life, o = {}) {
-  const m = new THREE.Mesh(BOX, mat); m.position.copy(pos); m.scale.setScalar(size);
+  const m = batchMesh(new THREE.Mesh(BOX, mat)); m.position.copy(pos); m.scale.setScalar(size);
   m.rotation.set(Math.random() * 3, Math.random() * 3, 0);
   scene.add(m);
   parts.push({ m, vel, size, life, max: life, spin: new V3(rand(-12, 12), rand(-12, 12), rand(-12, 12)), g: o.g ?? 1, bounce: o.bounce ?? .25, pool: o.pool, snd: o.snd });
@@ -975,7 +1033,7 @@ function dust(pos, n) {
   for (let i = 0; i < n; i++) particle(new V3(pos.x, .05, pos.z), new V3(rand(-1.5, 1.5), rand(.5, 2.2), rand(-1.5, 1.5)), M.dust, rand(.04, .09), rand(.3, .6));
 }
 function pool(x, z, r, mat = M.pool) {
-  const m = new THREE.Mesh(CIRC, mat); m.position.set(x, .008 + Math.random() * .003, z); m.scale.setScalar(.001);
+  const m = batchMesh(new THREE.Mesh(CIRC, mat)); m.position.set(x, .008 + Math.random() * .003, z); m.scale.setScalar(.001);
   scene.add(m); pools.push({ m, r, t: 0 });
   if (pools.length > 140) { const p = pools.shift(); scene.remove(p.m); }
 }
@@ -1179,14 +1237,13 @@ function tryFire() {
   fire(w);
 }
 
-const ray = new THREE.Raycaster();
+const ray = new THREE.Raycaster(); ray.layers.enable(HIDDEN_LAYER); // zombie parts are drawn through batches
+const syncZombies = () => { for (const z of zombies) { z.sync(); z.root.updateMatrixWorld(); } };
 const tmpA = new V3(), tmpB = new V3(), tmpC = new V3();
 function fire(w) {
   if (ABL.phase === 'prompt' && cur === 0) w = W_PROMPT;
   if (!(ABL.inf && cur === 0) && !w.infinite) ammo[cur]--; cool = w.rate; clickBuf = 0; const k0 = kills;
-  updateCamera();
-  for (const z of zombies) z.sync();
-  scene.updateMatrixWorld();
+  updateCamera(); syncZombies();
   const origin = camera.position.clone();
   const dir = new V3(); camera.getWorldDirection(dir);
   const right = new V3().setFromMatrixColumn(camera.matrixWorld, 0);
@@ -1379,8 +1436,8 @@ function kill(z, part, dir, imp, w, lx, lz) {
   if (ABL.phase === 'none') addPow(w.id >= 3 ? (key === 'head' ? .008 : .004) : (key === 'head' ? .04 : .018));
   if (ABL.phase === 'prompt' && key === 'head') { ABL.got++; updateObjective(true); SFX.ding(ABL.got - 1); }
   if (ABL.phase === 'prompt' && ABL.targets.includes(z)) markerPop(z.hitParts[0].getWorldPosition(new V3()));
-  const k = $('kills'); k.textContent = kills; k.classList.remove('pop'); void k.offsetWidth; k.classList.add('pop');
-  const r = $('ring'); r.classList.remove('go'); void r.offsetWidth; r.classList.add('go');
+  const k = $('kills'); k.textContent = kills; replay(k, KPOP, 220);
+  replay($('ring'), RING_FX, 320);
   if (gameT - lastKillSnd > .06) { lastKillSnd = gameT; SFX.kill(w.id >= 2 || key === 'head'); }
 
   rebuildHits();
@@ -1409,8 +1466,13 @@ function popPart(z, obj, dir, imp, name) {
   z.popped[name] = true;
   for (let i = 0; i < 10; i++) particle(wp, new V3(rand(-1.5, 1.5) + dir.x * 3, rand(2, 5), rand(-1.5, 1.5) + dir.z * 3), i % 2 ? M.blood : M.blood2, rand(.05, .11), rand(.8, 1.4), { pool: true });
 }
+// restart a short HUD animation without the forced layout of the remove-class/offsetWidth/add-class trick
+const RM = matchMedia('(prefers-reduced-motion: reduce)');
+const KPOP = [{ transform: 'scale(1.35)' }, { transform: 'scale(1)' }], DHIT = [{ transform: 'scale(2.4)' }, { transform: 'scale(1)' }];
+const RING_FX = [{ opacity: .95, transform: 'scale(.35)' }, { opacity: 0, transform: 'scale(1.35)' }];
+function replay(el, frames, ms) { if (el._an) el._an.cancel(); el._an = el.animate(frames, { duration: RM.matches ? 10 : ms, easing: 'ease-out' }); }
 function hitDot(head) {
-  const d = $('dot'); d.classList.remove('hit'); void d.offsetWidth; d.classList.add('hit');
+  const d = $('dot'); replay(d, DHIT, 160);
   if (head) { d.classList.add('head'); clearTimeout(hitDot.t); hitDot.t = setTimeout(() => d.classList.remove('head'), 140); }
 }
 function hurtPlayer(z, nx, nz_, dmg = 16) {
@@ -1589,7 +1651,7 @@ function updateObjective(pop) {
   const o = $('objective');
   $('objTxt').textContent = ABL.phase === 'montage' ? 'Trick shot' : `Land ${ABL.need} headshots`;
   $('objCnt').textContent = ABL.phase === 'montage' ? `${ABL.mk} down` : `${Math.min(ABL.got, ABL.need)} / ${ABL.need}`;
-  if (pop) { o.classList.remove('pop'); void o.offsetWidth; o.classList.add('pop'); }
+  if (pop) replay($('objCnt'), KPOP, 200);
 }
 function burstConfetti() {
   const box = $('confetti'); box.innerHTML = '';
@@ -2027,7 +2089,7 @@ function shotLimits(origin, d) {
 }
 function mgShot() {
   const T = TUR;
-  updateCamera(); for (const z of zombies) z.sync(); scene.updateMatrixWorld();
+  updateCamera(); syncZombies();
   const origin = camera.position.clone(), dir = new V3(); camera.getWorldDirection(dir);
   const right = new V3().setFromMatrixColumn(camera.matrixWorld, 0), up = new V3().setFromMatrixColumn(camera.matrixWorld, 1);
   const sp = .01 + T.heat * .012, r = sp * Math.sqrt(Math.random()), a = Math.random() * TAU;
@@ -2545,23 +2607,28 @@ function buildWepUI() {
   // the list is rebuilt often, so a freshly unlocked row resumes its flash where it left off instead of restarting
   const age = newWep ? performance.now() - newWep.t0 : 1e9;
   const fresh = i => newWep && newWep.i === i && age < 1000 ? ` fresh" style="animation-delay:-${age | 0}ms` : '';
-  $('weps').innerHTML = [0, 2, 1].map(i => ({ w: WEAPONS[i], i })).map(({ w, i }, n) => {
+  setHTML($('weps'), [0, 2, 1].map(i => ({ w: WEAPONS[i], i })).map(({ w, i }, n) => {
     const cls = ['wep']; if (i === cur) cls.push('on'); if (!unlocked[i]) cls.push('locked');
     const extra = unlocked[i] ? '' : `<i>at ${w.unlock} kills</i>`;
     return `<div class="${cls.join(' ')}${fresh(i)}"><b>${n + 1}</b><span>${w.name}</span>${extra}</div>`;
   }).join('') + (unlocked[3]
     ? `<div class="wep gren${fresh(3)}"><b>G</b><span>Grenade</span><i>${ammo[3]} left${ammo[3] < WEAPONS[3].mag ? `, next in ${Math.max(1, Math.ceil(gRecharge))}s` : ''}</i></div>`
-    : `<div class="wep locked"><b>G</b><span>Grenade</span><i>at ${WEAPONS[3].unlock} kills</i></div>`);
+    : `<div class="wep locked"><b>G</b><span>Grenade</span><i>at ${WEAPONS[3].unlock} kills</i></div>`));
 }
 function updateAmmoUI() {
   const w = WEAPONS[cur];
-  $('ammo').textContent = w.infinite ? '∞' : ammo[cur];
+  setText($('ammo'), w.infinite ? '∞' : ammo[cur]);
   let h = ''; if (!w.infinite) for (let i = 0; i < w.mag; i++) h += `<span class="${i < ammo[cur] ? '' : 'e'}"></span>`;
-  $('pips').innerHTML = h;
-  $('rel').textContent = w.grenade ? (ammo[3] < w.mag ? `Next in ${Math.max(1, Math.ceil(gRecharge))}s` : 'Click to throw') : reloading ? 'Reloading' : ammo[cur] === 0 ? 'Press R' : '';
+  setHTML($('pips'), h);
+  setText($('rel'), w.grenade ? (ammo[3] < w.mag ? `Next in ${Math.max(1, Math.ceil(gRecharge))}s` : 'Click to throw') : reloading ? 'Reloading' : ammo[cur] === 0 ? 'Press R' : '');
   buildWepUI();
 }
-let lastSec = -1, lastHp = -1;
+// DOM writes only when the value actually changes: rewriting identical styles, text or markup every frame
+// (or every shot) still invalidates style and layout
+function setStyle(el, prop, v) { v = String(v); const c = el._st || (el._st = {}); if (c[prop] !== v) { c[prop] = v; el.style[prop] = v; } }
+function setText(el, v) { v = String(v); if (el._tx !== v) { el._tx = v; el.textContent = v; } }
+function setHTML(el, v) { if (el._hm !== v) { el._hm = v; el.innerHTML = v; } }
+let lastSec = -1, lastHp = -1, lastLp = -1;
 function updateHUD() {
   const s = Math.floor(gameT);
   if (s !== lastSec) { lastSec = s; $('timer').textContent = fmtTime(gameT); if (unlocked[3]) updateAmmoUI(); }
@@ -2571,40 +2638,45 @@ function updateHUD() {
   $('prompt').classList.toggle('on', nearT);
   $('mgHud').classList.toggle('on', !!player.inTurret);
   $('hud').classList.toggle('mg', !!player.inTurret);
-  if (player.inTurret) { $('mgFill').style.transform = `scaleX(${Math.max(0, TUR.time / TUR_TIME)})`; $('mgTime').textContent = Math.ceil(Math.max(0, TUR.time)) + 's'; }
-  const pw = $('powWrap'); $('pow').style.transform = `scaleX(${pow})`;
+  if (player.inTurret) { setStyle($('mgFill'), 'transform', `scaleX(${Math.max(0, TUR.time / TUR_TIME).toFixed(3)})`); setText($('mgTime'), Math.ceil(Math.max(0, TUR.time)) + 's'); }
+  const pw = $('powWrap'); setStyle($('pow'), 'transform', `scaleX(${pow.toFixed(3)})`);
   pw.classList.toggle('full', pow >= 1 && ABL.phase === 'none');
-  $('powLbl').textContent = pow >= 1 && ABL.phase === 'none' ? 'Press Q for Upheaval' : 'Upheaval';
+  setText($('powLbl'), pow >= 1 && ABL.phase === 'none' ? 'Press Q for Upheaval' : 'Upheaval');
   if (alertZ && (alertZ.state === 'dead' || !zombies.includes(alertZ) || !(alertZ.state === 'crouch' || AIRBORNE[alertZ.state]))) alertZ = null;
-  if (alertZ) $('jHint').lastElementChild.textContent = alertZ.state === 'dive' ? 'Incoming!' : 'Jumper charging!';
-  $('jEdge').style.opacity = alertZ && !player.dead ? (alertZ.state === 'dive' ? .9 : .3 + .35 * (.5 + .5 * Math.sin(performance.now() / (alertZ.state === 'hover' ? 70 : 120)))) : 0;
+  if (alertZ) setText($('jHint').lastElementChild, alertZ.state === 'dive' ? 'Incoming!' : 'Jumper charging!');
+  setStyle($('jEdge'), 'opacity', alertZ && !player.dead ? (alertZ.state === 'dive' ? .9 : .3 + .35 * (.5 + .5 * Math.sin(performance.now() / (alertZ.state === 'hover' ? 70 : 120)))).toFixed(3) : 0);
   placeHint($('jHint'), alertZ ? alertZ.pos.x : 0, alertZ ? alertZ.pos.z : 0, !!alertZ && !player.dead);
   const wg = RING.warnGate; placeHint($('gHint'), wg ? wg.x : 0, wg ? wg.z : 0, !!wg && !player.dead);
   let eL = 0, eR = 0;
   if (wg && !player.dead) { const a = relAngle(wg.x, wg.z); if (Math.abs(a) > .55) { const pl = .5 + .2 * Math.sin(performance.now() / 110); if (a > 0) eR = pl; else eL = pl; } }
-  $('gEdgeL').style.opacity = eL; $('gEdgeR').style.opacity = eR;
+  setStyle($('gEdgeL'), 'opacity', eL.toFixed(3)); setStyle($('gEdgeR'), 'opacity', eR.toFixed(3));
   const slow = warp < .97;
   $('bars').classList.toggle('on', slow); $('hud').classList.toggle('slow', slow);
-  if (lp) lp.frequency.setTargetAtTime(ABL.phase === 'prompt' || ABL.phase === 'montage' ? 2600 : slow ? 380 + 19600 * Math.pow(clamp((warp - .06) / .94, 0, 1), 2.5) : 20000, AC.currentTime, .04);
+  const lpT = ABL.phase === 'prompt' || ABL.phase === 'montage' ? 2600 : slow ? 380 + 19600 * Math.pow(clamp((warp - .06) / .94, 0, 1), 2.5) : 20000;
+  if (lp && Math.abs(lpT - lastLp) > 1) { lastLp = lpT; lp.frequency.setTargetAtTime(lpT, AC.currentTime, .04); }
   const rw = WEAPONS[cur], rr = $('relRing');
   rr.classList.toggle('on', reloading && !player.dead);
   if (reloading) {
     const part = 1 - clamp(reloadT / rw.reload, 0, 1);
     const prog = rw.shell ? clamp((ammo[cur] + part) / rw.mag, 0, 1) : part;
-    $('relArc').style.strokeDashoffset = 113.1 * (1 - prog);
+    setStyle($('relArc'), 'strokeDashoffset', (113.1 * (1 - prog)).toFixed(2));
   }
   const lowPulse = player.hp < 35 && !player.dead ? (.25 + .15 * Math.sin(performance.now() / 180)) : 0;
-  $('hurt').style.opacity = Math.min(1, hurtFlash * .9 + lowPulse + (player.dead ? .5 : 0));
+  setStyle($('hurt'), 'opacity', Math.min(1, hurtFlash * .9 + lowPulse + (player.dead ? .5 : 0)).toFixed(3));
 }
 
 /* ====================== LOOP ====================== */
-let last = performance.now(), acc = 0;
+let last = performance.now();
 function frame(now) {
   requestAnimationFrame(frame);
-  const real = Math.min(.05, (now - last) / 1000); last = now;
+  const real = Math.min(.05, Math.max(0, now - last) / 1000); last = now;
   let dt = real;
-  if (TUR.motor) { const sp = state === 'play' ? TUR.spin : 0; TUR.motor.o.frequency.setTargetAtTime(55 + sp * 280, AC.currentTime, .04); TUR.motor.g.gain.setTargetAtTime(sp * .075, AC.currentTime, .04); }
-  if (hitstop > 0) { hitstop -= real; dt *= .06; }
+  if (TUR.motor) {
+    const sp = state === 'play' ? TUR.spin : 0;
+    if (Math.abs(sp - (TUR.motor.sp ?? -1)) > .003) { TUR.motor.sp = sp; TUR.motor.o.frequency.setTargetAtTime(55 + sp * 280, AC.currentTime, .04); TUR.motor.g.gain.setTargetAtTime(sp * .075, AC.currentTime, .04); }
+  }
+  // freeze-frames never interrupt the machine gun: its fire rate runs on this clock
+  if (hitstop > 0) { hitstop -= real; if (!player.inTurret) dt *= .06; }
   if (state === 'dying') {
     dyingT += real; dt *= .3;
     pModel.rotation.x = Math.max(-1.45, pModel.rotation.x - real * 3);
@@ -2613,9 +2685,10 @@ function frame(now) {
     if (dyingT > 1.6) showOver();
   }
   if (state === 'play' || state === 'dying') {
-    acc += dt; let n = 0;
-    while (acc >= STEP && n < 10) { step(STEP); acc -= STEP; n++; }
-    if (n >= 10) acc = 0;
+    // advance by exactly this frame's time in equal substeps of at most STEP, so every frame moves the
+    // world the same amount as it was on screen (a fixed-step accumulator alternates 1/2/3 steps and judders)
+    const n = Math.ceil(dt / STEP - 1e-6);
+    for (let i = 0; i < n; i++) step(dt / n);
     for (const z of zombies) z.sync();
     updateHUD();
   } else if (state === 'menu') {
@@ -2631,6 +2704,19 @@ for (let i = 0; i < 5; i++) { const a = i / 5 * TAU + .3, r = rand(9, 16); const
 for (const z of zombies) { for (let i = 0; i < 60; i++) z.update(1 / 60); z.sync(); }
 selectGun(0, true);
 buildWepUI(); updateAmmoUI();
+// compile every shader the game will use now, while the menu is up, and keep a hidden mesh on each base material:
+// effects render short-lived clones, and when the last clone was disposed three.js deleted the shader and
+// recompiled it on the next impact, which was a visible hitch. Also allocate the slow-motion render target.
+{
+  const keep = new THREE.Group(); keep.visible = false;
+  for (const m of [impMat, impMatW, M.shock, markerMat, waveMat, tracerBase, streakBase, M.fire, M.fireCore, M.smoke, M.spark])
+    keep.add(new THREE.Mesh(BOX, m));
+  scene.add(keep);
+  for (const m of [M.blood, M.blood2, M.dust, M.spark, M.smoke, M.brass, M.shell, M.gunDark, M.eye, M.eyeRed]) batchMesh(new THREE.Mesh(BOX, m));
+  for (const m of [M.pool, M.scorch, shadowMat]) batchMesh(new THREE.Mesh(CIRC, m));
+  scene.updateMatrixWorld(); renderer.compile(scene, camera); renderer.compile(postScene, postCam);
+  renderer.setRenderTarget(postRT); renderer.render(scene, camera); renderer.setRenderTarget(null);
+}
 requestAnimationFrame(frame);
 })();
 </script>
