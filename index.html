@@ -1201,8 +1201,8 @@ let startBest = 0, recShown = false;
 let spawnT = 0, trauma = 0, bestRec = 0, gCool = 0, gRecharge = 6, lastKillSnd = 0;
 let nades = [], booms = [], pending = [];
 try {
-  // one-time wipe of personal bests saved before the September 2026 rebalance; runs once per browser
-  if (localStorage.getItem('flatline_best_reset') !== '2026-09') { localStorage.removeItem('flatline_best'); localStorage.setItem('flatline_best_reset', '2026-09'); }
+  // one-time wipe of saved personal bests (last done alongside the 25 Sep 2026 leaderboard reset); runs once per browser
+  if (localStorage.getItem('flatline_best_reset') !== '2026-09-25') { localStorage.removeItem('flatline_best'); localStorage.setItem('flatline_best_reset', '2026-09-25'); }
   bestRec = +localStorage.getItem('flatline_best') || 0;
 } catch (e) { }
 const keys = {};
@@ -2201,13 +2201,14 @@ function tickAbility(dt) {
       break;
     case 'montage': {
       aWarp = .1; ABL.cool -= dt;
-      if (ABL.fin > 0) { ABL.fin -= dt; if (ABL.fin <= 0) toOutro(); break; }
+      // when the trick shots end, the view comes back level: the crosshair at eye height
+      if (ABL.fin > 0) { ABL.fin -= dt; if (ABL.fin <= 0) { player.pitch = 0; toOutro(); } break; }
       if (!ABL.cur || ABL.cur.state === 'dead') { const a = aliveTargets(); if (!a.length) { montageFinale(); break; } ABL.cur = a[0]; }
       if (ABL.cool <= 0 && ABL.cam && ABL.cam.t > .15 && (ABL.cam.aligned || ABL.cool < -.12)) {
         montageFire(ABL.cur); ABL.mi++; ABL.cur = null;
         ABL.cool = Math.max(.06, .28 * Math.pow(.88, ABL.mi)); // the trick shots speed up, a touch more gradually
       }
-      if (ABL.t > 16) toOutro();
+      if (ABL.t > 16) { player.pitch = 0; toOutro(); }
       break;
     }
     case 'outro':
